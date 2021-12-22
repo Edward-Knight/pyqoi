@@ -6,18 +6,39 @@ import enum
 import struct
 from typing import Optional, Protocol, Sequence, runtime_checkable
 
-__version__ = "0.0.1"
+__version__ = "0.0.2"
+
+
+QOI_MAGIC = b"qoif"
+"""Magic bytes identifying the QOI format."""
+
+
+class PyqoiException(Exception):
+    """Base Exception class for pyqoi errors."""
+
+    def __init__(self, msg: str):
+        """Specify a generic human-readable error message."""
+        super().__init__(msg)
+
+
+class PyqoiDecodeError(PyqoiException, ValueError):
+    """For pyqoi errors during decoding QOI data."""
+
+    def __init__(self, msg: str, header: bytes):
+        """Specify a decoding error message and file header."""
+        self.header = header
+        super().__init__(msg)
 
 
 @runtime_checkable
 class SupportsRead(Protocol):
-    """An ABC with one abstract method _read_."""
+    """An ABC with one abstract method *read*."""
 
     __slots__ = ()
 
     @abc.abstractmethod
     def read(self, size: Optional[int] = -1) -> bytes:
-        """Read and return up to _size_ bytes.
+        """Read and return up to *size* bytes.
 
         If the argument is omitted, `None`, or negative,
         data is read and returned until EOF is reached.
@@ -87,16 +108,61 @@ QOI_HEADER_STRUCT = struct.Struct(
 )
 
 
-def load(f: SupportsRead) -> QOIHeader:
-    """Load a QOI file.
+def load_header_bytes(header: bytes) -> QOIHeader:
+    """Read the header data of a QOI file.
 
-    Only loads and returns the header for now.
+    Raises a PyqoiDecodeError if the header is invalid.
     """
-    magic, width, height, channels, colour_space = QOI_HEADER_STRUCT.unpack(
-        f.read(QOI_HEADER_STRUCT.size)
-    )
-    assert magic == b"qoif"
-    return QOIHeader(width, height, QOIChannels(channels), QOIColorSpace(colour_space))
+    # check header size
+    if len(header) != QOI_HEADER_STRUCT.size:
+        raise PyqoiDecodeError(
+            "header is wrong size, "
+            f"must be {QOI_HEADER_STRUCT.size} bytes, is {len(header)} bytes",
+            header,
+        )
+
+    # parse header fields
+    magic, width, height, channels, colour_space = QOI_HEADER_STRUCT.unpack(header)
+
+    # check magic
+    if magic != QOI_MAGIC:
+        raise PyqoiDecodeError(
+            f"magic bytes are incorrect, should be {QOI_MAGIC!r}, is {magic!r}", header
+        )
+
+    # width and height can't be incorrect due to parsing method
+
+    # check channels field
+    try:
+        channels_enum = QOIChannels(channels)
+    except ValueError:
+        channels_values = set(c.value for c in QOIChannels)
+        raise PyqoiDecodeError(
+            "channels header field is incorrect, "
+            f"must be one of {channels_values}, is {channels}",
+            header,
+        )
+
+    # check colorspace field
+    try:
+        colour_space_enum = QOIColorSpace(colour_space)
+    except ValueError:
+        colour_space_values = set(c.value for c in QOIColorSpace)
+        raise PyqoiDecodeError(
+            "colorspace header field is incorrect, "
+            f"must be one of {colour_space_values}, is {colour_space}",
+            header,
+        )
+
+    return QOIHeader(width, height, channels_enum, colour_space_enum)
+
+
+def load_header_file(f: SupportsRead) -> QOIHeader:
+    """Read the header from a QOI file.
+
+    Raises a PyqoiDecodeError if the header is invalid.
+    """
+    return load_header_bytes(f.read(QOI_HEADER_STRUCT.size))
 
 
 def __main__(argv: Optional[Sequence[str]] = None):
@@ -112,7 +178,7 @@ def __main__(argv: Optional[Sequence[str]] = None):
     )
     parser.add_argument("infile", type=argparse.FileType("rb"))
     args = parser.parse_args(argv)
-    print(load(args.infile))
+    print(load_header_file(args.infile))
 
 
 if __name__ == "__main__":
