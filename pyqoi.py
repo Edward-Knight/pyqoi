@@ -3,6 +3,7 @@ import abc
 import argparse
 import dataclasses
 import enum
+import io
 import struct
 from typing import Optional, Protocol, Sequence, runtime_checkable
 
@@ -33,8 +34,6 @@ class PyqoiDecodeError(PyqoiException, ValueError):
 @runtime_checkable
 class SupportsRead(Protocol):
     """An ABC with one abstract method *read*."""
-
-    __slots__ = ()
 
     @abc.abstractmethod
     def read(self, size: Optional[int] = -1) -> bytes:
@@ -95,6 +94,24 @@ class QOIHeader:
     """The colour space this image is designed for.
 
     Should either be 0 for sRGB or 1 for linear.
+    """
+
+
+Pixel = tuple[int, int, int, int]
+"""Data representing the red, green, blue, and alpha channels of one pixel."""
+
+
+@dataclasses.dataclass
+class QOIData:
+    """Full data from a QOI file."""
+
+    header: QOIHeader
+    """File header containing metadata."""
+
+    pixels: Sequence[Pixel]
+    """Raw image data.
+
+    This is a "flat" structure - one row of pixels leads on from the next.
     """
 
 
@@ -163,6 +180,24 @@ def load_header_file(f: SupportsRead) -> QOIHeader:
     Raises a PyqoiDecodeError if the header is invalid.
     """
     return load_header_bytes(f.read(QOI_HEADER_STRUCT.size))
+
+
+def loads(data: bytes) -> QOIData:
+    """Read a QOI file.
+
+    Raises a PyqoiDecodeError if the image is invalid.
+    """
+    return load(io.BytesIO(data))
+
+
+def load(f: SupportsRead) -> QOIData:
+    """Read the data of a QOI file.
+
+    Raises a PyqoiDecodeError if the image is invalid.
+    """
+    header = load_header_file(f)
+    # todo
+    return QOIData(header, [])
 
 
 def __main__(argv: Optional[Sequence[str]] = None):
