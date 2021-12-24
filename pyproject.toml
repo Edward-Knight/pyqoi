@@ -9,9 +9,13 @@ readme = "README.md"
 license = {file = "LICENSE"}
 classifiers = ["License :: OSI Approved :: MIT License"]
 dynamic = ["version", "description"]
+python_requires = "~ 3.10"
 
 [project.urls]
 Home = "https://github.com/Edward-Knight/pyqoi"
 
 [project.scripts]
 pyqoi = "pyqoi:__main__"
+
+[tool.black]
+target_version = ["py310"]
